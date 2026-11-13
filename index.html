@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src https://graph.microsoft.com https://login.microsoftonline.com https://*.microsoftpersonalcontent.com https://*.1drv.com; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#ffffff">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="PIM">
+<title>PIM</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<nav id="sidebar" aria-label="Lists"></nav>
+<main id="main">
+  <header class="top">
+    <h1 id="view-title">Today</h1>
+    <div id="status" data-state="idle"></div>
+  </header>
+  <div id="quick">
+    <input id="quick-input" placeholder="Add a task" autocomplete="off" enterkeyhint="done">
+    <div class="chips">
+      <button class="chip" data-date="today">Today</button>
+      <button class="chip" data-date="tomorrow">Tomorrow</button>
+      <button class="chip" data-date="none">No date</button>
+    </div>
+  </div>
+  <div id="list"></div>
+</main>
+<aside id="detail" aria-label="Task details"></aside>
+<nav id="tabs" aria-label="Views"></nav>
+<div id="sheet" hidden></div>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
