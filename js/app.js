@@ -2,6 +2,7 @@
 import { Store } from './store.js';
 import * as A from './auth.js';
 import * as D from './dates.js';
+import * as H from './habits.js';
 
 const demo = new URLSearchParams(location.search).has('demo');
 const store = new Store({ demo });
@@ -22,7 +23,7 @@ function el(tag, props = {}, ...kids) {
 }
 
 const PRIORITY = { 5: ['High', 'p-high'], 3: ['Medium', 'p-med'], 1: ['Low', 'p-low'], 0: ['None', 'p-none'] };
-const VIEWS = { today: 'Today', next7: 'Next 7 Days', inbox: 'Inbox', all: 'All', completed: 'Completed', trash: 'Trash' };
+const VIEWS = { today: 'Today', next7: 'Next 7 Days', habits: 'Habits', inbox: 'Inbox', all: 'All', completed: 'Completed', trash: 'Trash' };
 let view = localStorage.getItem('pim.view') || 'today';
 let selected = null;           // task id open in the details pane / sheet
 let quickDate = null;          // 'today' | 'tomorrow' | 'none' chip for Quick add
@@ -68,6 +69,7 @@ function counts() {
     next7: store.open.filter(t => D.isOverdue(t) || D.overlaps(t, t0, t7)).length,
     inbox: store.open.filter(t => t.ListId === store.inbox.Id).length,
     all: store.open.length,
+    habits: store.habits.filter(h => H.isDue(store.data, h, t0)).length,
   };
 }
 
@@ -90,25 +92,35 @@ function renderNav() {
   const side = $('#sidebar');
   side.replaceChildren(
     el('div', { class: 'brand' }, el('img', { src: 'icons/icon-192.png', alt: '' }), el('span', { text: 'PIM' })),
-    navItem('today', 'Today', c.today), navItem('next7', 'Next 7 Days', c.next7), navItem('inbox', 'Inbox', c.inbox), navItem('all', 'All', c.all),
+    navItem('today', 'Today', c.today), navItem('next7', 'Next 7 Days', c.next7), navItem('habits', 'Habits', c.habits), navItem('inbox', 'Inbox', c.inbox), navItem('all', 'All', c.all),
     el('div', { class: 'nav-head', text: 'Lists' }),
     ...store.lists.filter(l => !l.IsInbox).map(l => navItem('list:' + l.Id, l.Name, store.open.filter(t => t.ListId === l.Id).length, l.Color)),
     el('div', { class: 'nav-head' }), navItem('completed', 'Completed'), navItem('trash', 'Trash'));
   const tabs = $('#tabs');
-  const tab = (key, label, icon) => el('button', { class: 'tab' + ((view === key || (key === 'lists' && !['today', 'next7', 'inbox'].includes(view))) ? ' on' : ''), onclick: () => key === 'lists' ? openListsSheet() : go(key) },
+  const tab = (key, label, icon) => el('button', { class: 'tab' + ((view === key || (key === 'lists' && !['today', 'next7', 'habits', 'inbox'].includes(view))) ? ' on' : ''), onclick: () => key === 'lists' ? openListsSheet() : go(key) },
     el('span', { class: 'tab-icon', text: icon }), el('span', { text: label }));
-  tabs.replaceChildren(tab('today', 'Today', '☀'), tab('next7', 'Next 7', '📅'), tab('inbox', 'Inbox', '📥'), tab('lists', 'Lists', '☰'));
+  tabs.replaceChildren(tab('today', 'Today', '☀'), tab('next7', 'Next 7', '📅'), tab('habits', 'Habits', '◎'), tab('inbox', 'Inbox', '📥'), tab('lists', 'Lists', '☰'));
 }
 
 function renderMain() {
   $('#view-title').textContent = viewTitle();
-  const showAdd = !['completed', 'trash'].includes(view);
+  const showAdd = !['completed', 'trash', 'habits'].includes(view);
   $('#quick').hidden = !showAdd;
   if (quickDate === null) quickDate = view === 'today' || view === 'next7' ? 'today' : 'none';
   for (const b of document.querySelectorAll('#quick .chip')) b.classList.toggle('on', b.dataset.date === quickDate);
   const body = $('#list');
+  if (view === 'habits') { body.replaceChildren(...habitsScreen()); return; }
   const secs = sections().filter(s => s.tasks.length || (!s.title && true));
   const nodes = [];
+  if (view === 'today') {
+    const t0 = D.today();
+    const hs = store.habits.filter(h => H.isDue(store.data, h, t0) || H.value(store.data, h, t0) > 0)
+      .sort((a, b) => H.achieved(store.data, a, t0) - H.achieved(store.data, b, t0));
+    if (hs.length) {
+      nodes.push(el('div', { class: 'sec', text: `Habits  ${hs.filter(h => H.achieved(store.data, h, t0)).length}/${hs.length}` }));
+      for (const h of hs) nodes.push(habitRow(h, false));
+    }
+  }
   for (const s of secs) {
     if (s.title && s.tasks.length) nodes.push(el('div', { class: 'sec', text: `${s.title}  ${s.tasks.length}` }));
     for (const t of s.tasks) nodes.push(row(t));
@@ -128,6 +140,110 @@ function row(t) {
     el('div', { class: 'row-text' }, el('div', { class: 'row-title', text: t.Title || '(untitled)' }),
       meta ? el('div', { class: 'row-meta' + (D.isOverdue(t) ? ' late' : ''), text: meta }) : null),
     list?.Color ? el('span', { class: 'list-dot', style: `background:${list.Color}` }) : null);
+}
+
+// ---- habits ------------------------------------------------------------------------------------------
+function habitsScreen() {
+  const habits = store.habits;
+  if (!habits.length) return [el('div', { class: 'empty', text: store.data.tasks.length ? 'No habits yet. Create them in PIM on your PC; they appear here to check in.' : 'Loading...' })];
+  const nodes = [];
+  for (const sec of H.sectionOrder(habits)) {
+    const hs = habits.filter(h => (h.Section || 'Others') === sec);
+    if (!hs.length) continue;
+    nodes.push(el('div', { class: 'sec', text: sec }));
+    for (const h of hs) nodes.push(habitRow(h, true));
+  }
+  nodes.push(el('div', { class: 'hint center', text: 'Tap the circle to check in. Tap a habit for its month. Habits are created and edited in PIM on your PC.' }));
+  return nodes;
+}
+
+/** The check circle: filled when done, a partial ring for an amount under way. */
+function habitCircle(h, day, size = 30, after = null) {
+  const v = H.value(store.data, h, day), done = H.achievedValue(h, v), frac = Math.min(1, v / Math.max(h.Goal || 1, 1e-9));
+  const style = `--hc:${h.Color || '#5b5bd6'};--p:${Math.round(frac * 360)}deg;width:${size}px;height:${size}px`;
+  return el('button', { class: 'hcheck' + (done ? ' on' : frac > 0 ? ' part' : H.isScheduled(h, day) ? '' : ' off'), style, 'aria-label': done ? `${h.Name}: done, tap to undo` : `Check in ${h.Name}`,
+    onclick: e => { e.stopPropagation(); if (!habitTap(h, day)) after?.(); } }, done ? '✓' : '');
+}
+
+function habitRow(h, withWeek) {
+  const t0 = D.today();
+  const run = H.streak(store.data, h, t0);
+  const meta = [H.describe(h), H.isAmount(h) ? H.progress(store.data, h, t0) : '', run ? `${run}-day streak` : ''].filter(Boolean).join('  ·  ');
+  const week = withWeek ? el('div', { class: 'hweek' }, ...[6, 5, 4, 3, 2, 1].map(i => {
+    const day = D.addDays(t0, -i), v = H.value(store.data, h, day), done = H.achievedValue(h, v);
+    return el('span', { class: 'hday' + (done ? ' on' : v > 0 ? ' part' : H.isScheduled(h, day) ? '' : ' off'), style: `--hc:${h.Color}`, title: day.toDateString() });
+  })) : null;
+  const done = H.achieved(store.data, h, t0);
+  return el('div', { class: 'row hrow' + (done && !withWeek ? ' done' : ''), onclick: () => openHabitSheet(h) },
+    habitCircle(h, t0),
+    el('div', { class: 'row-text' }, el('div', { class: 'row-title', text: h.Name }), el('div', { class: 'row-meta', text: meta })),
+    week);
+}
+
+/** Check in. Returns true if it opened a sheet of its own (an amount to type, or a note to write). */
+function habitTap(h, day) {
+  const d = store.data;
+  if (!H.achieved(d, h, day) && h.CheckMode === 'manual') { amountSheet(h, day); return true; }
+  if (store.tapHabit(h, day) && h.AskLog) { noteSheet(h, day); return true; }
+  return false;
+}
+
+function sheetCard(title, ...kids) {
+  const sheet = $('#sheet');
+  sheet.replaceChildren(el('div', { class: 'sheet-card' },
+    el('div', { class: 'sheet-head' }, el('span', { text: title }), el('button', { class: 'link', text: 'Close', onclick: () => (sheet.hidden = true) })), ...kids));
+  sheet.hidden = false;
+  sheet.onclick = e => { if (e.target === sheet) sheet.hidden = true; };
+  return sheet;
+}
+
+/** "Ask how much" habits: type or tap an amount to add. */
+function amountSheet(h, day) {
+  const d = store.data, now = H.value(d, h, day), left = Math.max(1, (h.Goal || 1) - now);
+  const input = el('input', { class: 'amount', type: 'number', inputmode: 'decimal', min: '0', step: 'any', value: H.amount(left) });
+  const add = v => { if (!(v > 0)) return; $('#sheet').hidden = true; if (store.tapHabit(h, day, v) && h.AskLog) noteSheet(h, day); };
+  sheetCard(h.Name,
+    el('div', { class: 'hint', text: `Add how many ${(h.Unit || '').toLowerCase()}? ${now > 0 ? `So far ${H.progress(d, h, day)}.` : `Goal ${H.amount(h.Goal)}.`}` }),
+    el('div', { class: 'field' }, input, el('button', { class: 'chip on', text: 'Add', onclick: () => add(parseFloat(input.value)) })),
+    el('div', { class: 'chips' }, ...[...new Set([1, 5, 10, left])].sort((a, b) => a - b).map(v => el('button', { class: 'chip', text: `+${H.amount(v)}`, onclick: () => add(v) }))));
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') add(parseFloat(input.value)); });
+}
+
+function noteSheet(h, day) {
+  const c = H.checkIn(store.data, h, day);
+  const box = el('textarea', { class: 'd-notes', rows: 3, placeholder: 'How did it go? (saved in the habit log)' });
+  box.value = c?.Note || '';
+  sheetCard(h.Name, box,
+    el('div', { class: 'chips' }, el('button', { class: 'chip on', text: 'Save note', onclick: () => { $('#sheet').hidden = true; store.setHabitDay(h, day, H.value(store.data, h, day), box.value.trim()); } }),
+      el('button', { class: 'chip', text: 'Skip', onclick: () => ($('#sheet').hidden = true) })));
+}
+
+/** A habit's month: tap any past day to check in or undo it. */
+function openHabitSheet(h, month = D.startOfDay(new Date(new Date().getFullYear(), new Date().getMonth(), 1))) {
+  const t0 = D.today(), d = store.data;
+  const first = new Date(month.getFullYear(), month.getMonth(), 1), days = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+  const cells = [...'SMTWTFS'].map(x => el('span', { class: 'cal-h', text: x }));
+  for (let i = 0; i < first.getDay(); i++) cells.push(el('span'));
+  let doneCount = 0;
+  for (let n = 1; n <= days; n++) {
+    const day = new Date(month.getFullYear(), month.getMonth(), n);
+    if (H.achieved(d, h, day)) doneCount++;
+    const future = day > t0;
+    const c = future ? el('span', { class: 'cal-d future', text: String(n) }) : habitCircle(h, day, 34, () => openHabitSheet(h, month));
+    if (!future) c.textContent = String(n);
+    cells.push(c);
+  }
+  const notes = d.checkIns.filter(c => c.HabitId === h.Id && c.Note && D.parse(c.Date).getMonth() === month.getMonth() && D.parse(c.Date).getFullYear() === month.getFullYear())
+    .sort((a, b) => b.Date.localeCompare(a.Date));
+  const prev = new Date(month.getFullYear(), month.getMonth() - 1, 1), next = new Date(month.getFullYear(), month.getMonth() + 1, 1);
+  sheetCard(h.Name,
+    el('div', { class: 'hint', text: `${H.describe(h)}${H.isAmount(h) ? `  ·  ${H.amount(h.Goal)} ${h.Unit} a day` : ''}  ·  ${doneCount} day${doneCount === 1 ? '' : 's'} done in ${month.toLocaleDateString([], { month: 'long' })}` }),
+    el('div', { class: 'cal-nav' }, el('button', { class: 'link', text: '‹', onclick: e => { e.stopPropagation(); openHabitSheet(h, prev); } }),
+      el('span', { text: month.toLocaleDateString([], { month: 'long', year: 'numeric' }) }),
+      el('button', { class: 'link', text: '›', disabled: next > t0, onclick: e => { e.stopPropagation(); openHabitSheet(h, next); } })),
+    el('div', { class: 'cal' }, ...cells),
+    notes.length ? el('div', { class: 'f-label block', text: 'Habit log' }) : null,
+    ...notes.map(c => el('div', { class: 'logrow' }, el('div', { class: 'hint', text: D.parse(c.Date).toDateString() }), el('div', { text: c.Note }))));
 }
 
 function renderDetail() {
@@ -274,5 +390,17 @@ function loadDemo(s) {
     T('Plan the garden', 'proj', null),
     T('Read 20 pages', 'home', at(0), { Completed: true, CompletedTime: at(0, 8) }),
   ];
+  const Hb = (Id, Name, Color, extra = {}) => ({ Id, Name, Color, Frequency: 'days', Days: 127, TimesPerWeek: 3, IntervalDays: 2, Goal: 1, Unit: 'Count', CheckMode: 'all', Step: 1,
+    Section: 'Others', Reminder: null, StartDate: at(-20), GoalDays: null, AskLog: false, Archived: false, SortOrder: 0, Created: at(-20), ...extra });
+  s.data.habits = [Hb('hr', 'Read', '#2F7FED', { Goal: 10, Unit: 'Pages', CheckMode: 'manual', Section: 'Night', SortOrder: 1 }),
+    Hb('hw', 'Drink water', '#12A5B0', { Goal: 8, Unit: 'Glasses', CheckMode: 'auto', SortOrder: 2 }),
+    Hb('he', 'Exercise', '#EA7A2B', { Days: 0b0101010, Section: 'Morning', SortOrder: 3 })];
+  for (let i = 1; i <= 12; i++) {
+    const day = D.addDays(D.today(), -i);
+    if (i % 4) H.set(s.data, s.data.habits[0], day, 10 + (i % 3) * 2);
+    H.set(s.data, s.data.habits[1], day, i % 5 ? 8 : 5);
+    if (H.isScheduled(s.data.habits[2], day) && i !== 5) H.set(s.data, s.data.habits[2], day, 1);
+  }
+  H.set(s.data, s.data.habits[1], D.today(), 3);
   s.setStatus('demo', 'Demo data - not synced');
 }

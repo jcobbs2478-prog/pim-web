@@ -18,12 +18,19 @@ here: they live in your own OneDrive, behind your Microsoft sign-in.
   port of PIM's `SyncEngine.cs`, checked against real PIM files (`tests/engine.test.mjs`, `tests/compat_write.mjs`).
 - **When:** on opening, every 15 s while the page is on screen, when you come back to it, and 0.8 s after an edit.
 - **Offline:** the page and your tasks are kept on the device; edits made offline upload when you are back online.
+- **Habits:** the Habits tab (and the top of Today) lists your habits; tap the circle to check in (an amount habit
+  asks how much), tap a habit for its month, where any past day can be checked or undone. Habits are created and
+  edited in PIM on the PC. Rules in `js/habits.js`, ported from PIM's `HabitLogic.cs`.
+- **Record kinds:** each sync file says which kinds of record its writer knows (`Format` 2 = lists, tasks, habits,
+  check-ins, focus records). Records of a kind a file's writer did not know are ignored when it is merged, so an older
+  device cannot delete them; same rule as the PC.
 - **24-hour sign-in:** Microsoft limits browser apps to 24 hours per sign-in. After that the page goes to Microsoft
   and straight back without asking, as long as Microsoft remembers you on this device.
 
 ## Not (yet) on the phone
 
-Reminders (a web page cannot schedule notifications without a server), pictures in notes (their lines show as
+Creating or editing habits, the Pomodoro timer (the focus record syncs and is kept, but is not shown), reminders (a web
+page cannot schedule notifications without a server), pictures in notes (their lines show as
 `![image](pim-image:...)`; leave them alone and they stay on the PC), Kanban, timeline, calendar and matrix views,
 tags, and the PC's plain-English quick add (the phone has Today / Tomorrow / No date buttons instead).
 
@@ -31,5 +38,6 @@ tags, and the PC's plain-English quick add (the phone has Today / Tomorrow / No 
 
 Static files, no build step. `python -m http.server 8765 --bind 127.0.0.1`, then open
 `http://127.0.0.1:8765/?demo=1` for demo data (never syncs) or without `?demo` to sign in (that address is registered
-for sign-in too). Tests: `node tests/engine.test.mjs <a replica written by PIM>` and
+for sign-in too). Tests: `node tests/engine.test.mjs <a replica written by PIM>`, `node tests/habits.test.mjs <a replica with habits>`,
+`node tests/compat_habits.mjs <replica> <test sync folder>` (then start PIM on that folder) and
 `python tests/ui_demo.py http://127.0.0.1:8765/ shots`.

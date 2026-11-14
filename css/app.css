@@ -109,3 +109,27 @@ body.has-detail #detail { display: block; }
   #detail { position: static; height: 100dvh; border-left: 1px solid var(--line); z-index: auto; }
   body.has-detail #detail { display: block; }
 }
+
+/* ---- habits ------------------------------------------------------------------------------------- */
+.hcheck { flex: none; border-radius: 50%; border: 2px solid color-mix(in srgb, var(--hc) 45%, transparent); color: #fff; font-size: 14px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center; }
+.hcheck.part { border: 0; background: radial-gradient(circle, var(--bg) 57%, transparent 59%), conic-gradient(var(--hc) var(--p), color-mix(in srgb, var(--hc) 22%, transparent) 0); }
+.hcheck.on { background: var(--hc); border-color: var(--hc); }
+.hcheck.off { border-color: var(--line); color: var(--muted); }
+.hweek { display: flex; gap: 5px; flex: none; }
+.hday { width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid color-mix(in srgb, var(--hc) 45%, transparent); }
+.hday.on { background: var(--hc); border-color: var(--hc); }
+.hday.part { background: color-mix(in srgb, var(--hc) 40%, transparent); }
+.hday.off { border-color: var(--line); transform: scale(.55); }
+.hint.center { text-align: center; margin: 22px 8px; }
+.amount { width: 120px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; font-size: 18px; }
+.cal-nav { display: flex; align-items: center; justify-content: space-between; margin: 10px 4px 4px; font-weight: 600; }
+.cal-nav .link { font-size: 24px; padding: 0 10px; }
+.cal-nav .link:disabled { opacity: .3; }
+.cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; justify-items: center; align-items: center; padding: 4px 0 8px; }
+.cal-h { font-size: 12px; color: var(--muted); }
+.cal .hcheck { font-size: 13px; color: var(--text); }
+.cal .hcheck.on { color: #fff; }
+.cal-d.future { width: 34px; height: 34px; line-height: 34px; text-align: center; color: var(--gray); font-size: 13px; }
+.logrow { padding: 6px 0; border-bottom: 1px solid var(--line); }
+#tabs { grid-template-columns: repeat(5, 1fr); }

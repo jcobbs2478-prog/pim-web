@@ -6,8 +6,10 @@
 import * as E from './engine.js';
 import * as G from './graph.js';
 import * as D from './dates.js';
+import * as H from './habits.js';
 
 const KEY = 'pim.state';          // { device, replica, data, others, pending } kept together so they never disagree
+const emptyData = () => ({ lists: [], tasks: [], habits: [], checkIns: [], focus: [] });
 const SORT_STEP = 2 ** 32;
 const newId = () => [...crypto.getRandomValues(new Uint8Array(8))].map(b => b.toString(16).padStart(2, '0')).join('');
 
@@ -25,9 +27,12 @@ export class Store extends EventTarget {
     const saved = demo ? null : JSON.parse(localStorage.getItem(KEY) || 'null');
     this.device = saved?.device ?? { id: newId().slice(0, 8), name: deviceName() };
     this.replica = saved?.replica ?? E.newReplica(this.device.id, this.device.name);
-    this.data = saved?.data ?? { lists: [], tasks: [] };
+    this.data = { ...emptyData(), ...(saved?.data ?? {}) };
     this.others = saved?.others ?? {};      // device folder or file -> { etag, replica }
     this.pending = saved?.pending ?? false;
+    // A replica saved by the previous version: drop records it did not know (habits it may have marked deleted by
+    // mistake); the next sync brings the real ones back from the PCs' files, and this device republishes.
+    if (E.upgrade(this.replica)) this.pending = true;
     this.clock = new E.SyncClock(this.device.id);
     this.clock.observe(this.replica.MaxT);
     this.version = 0;
@@ -160,6 +165,15 @@ export class Store extends EventTarget {
     t.Modified = D.nowString();
     this.changed();
   }
+
+  // ---- habits (created and edited on the PC; checked in here) -----------------------------------------
+
+  get habits() { return this.data.habits.filter(h => !h.Archived).sort((a, b) => (a.SortOrder || 0) - (b.SortOrder || 0)); }
+  habit(id) { return this.data.habits.find(h => h.Id === id); }
+
+  /** A tap on a habit's day. `manual` is the amount for "ask how much" habits. Returns true if the day was completed. */
+  tapHabit(h, day, manual) { const done = H.tap(this.data, h, day, manual); this.changed(); return done; }
+  setHabitDay(h, day, value, note) { H.set(this.data, h, day, value, note); this.changed(); }
 
   /** Moves a task to Trash (PIM's soft delete), so it can be restored on any device. */
   trash(t) { this.update(t, { Deleted: true }); }
