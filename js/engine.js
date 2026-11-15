@@ -29,6 +29,23 @@ export function upgrade(r) {
   return true;
 }
 
+/**
+ * Why a replica downloaded from OneDrive cannot be merged, or null when it is sound. Same rule as
+ * SyncEngine.Problem in PIM: a file with a missing record or field would throw inside merge() on every pass and
+ * stop sync until the file was replaced, and a file from a newer format may hold kinds this version cannot keep.
+ */
+export function problem(r) {
+  if (!r || typeof r !== 'object' || Array.isArray(r)) return 'empty file';
+  if ((r.Format ?? 1) > FORMAT) return 'unsupported format';
+  if (!r.Records || typeof r.Records !== 'object' || Array.isArray(r.Records)) return 'no records';
+  for (const [key, rec] of Object.entries(r.Records)) {
+    if (!rec || typeof rec !== 'object' || Array.isArray(rec)) return `record ${key} is empty`;
+    for (const [name, fv] of Object.entries(rec))
+      if (!fv || typeof fv !== 'object' || typeof fv.t !== 'number' || typeof fv.d !== 'string') return `field ${key}.${name} is malformed`;
+  }
+  return null;
+}
+
 export function newReplica(device, deviceName) {
   return { Format: FORMAT, Device: device, DeviceName: deviceName, WrittenUtc: new Date().toISOString(), MaxT: 0, Records: {} };
 }

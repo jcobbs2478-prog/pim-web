@@ -2,7 +2,7 @@
 // Usage: node tests/engine.test.mjs [path-to-a-replica-written-by-PIM]
 // With a real replica it also proves that reading PIM's file produces no phantom edits.
 import { readFileSync } from 'node:fs';
-import { newReplica, materialize, stampLocal, merge, fingerprint, SyncClock, clone, isDeleted } from '../js/engine.js';
+import { newReplica, materialize, stampLocal, merge, fingerprint, SyncClock, clone, isDeleted, problem } from '../js/engine.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, detail = '') => { if (ok) pass++; else { fail++; console.log('FAIL', name, detail); } };
@@ -12,6 +12,7 @@ const real = process.argv[2];
 if (real) {
   const csharp = JSON.parse(readFileSync(real, 'utf8').replace(/^﻿/, ''));
   const phone = newReplica('webtest1', 'Test');
+  check('real: PIM file passes the soundness check', problem(csharp) === null, String(problem(csharp)));
   check('real: merge copies every record', merge(phone, csharp) && Object.keys(phone.Records).length === Object.keys(csharp.Records).length);
   const data = materialize(phone);
   const clock = new SyncClock('webtest1'); clock.observe(phone.MaxT);
@@ -71,6 +72,19 @@ const D = new Dev('D', { lists: [], tasks: [] }, -600_000); D.pull(A);
 now += 1000; A.task('t1').Title = 'From A'; A.sync(); D.pull(A);
 now += 1000; D.task('t1').Title = 'From slow D'; D.sync(); A.pull(D);
 check('slow clock still wins after seeing', A.task('t1').Title === 'From slow D');
+
+// ---- malformed files from OneDrive are refused, not merged ------------------------------------------
+const okRec = { Title: { v: 'x', t: 5, d: 'A' } };
+check('problem: sound replica', problem({ Format: 2, Records: { 'task:1': okRec } }) === null);
+check('problem: no Format is format 1', problem({ Records: {} }) === null);
+check('problem: null', problem(null) === 'empty file');
+check('problem: an array', problem([]) === 'empty file');
+check('problem: no Records', problem({ Format: 2 }) === 'no records');
+check('problem: Records null', problem({ Records: null }) === 'no records');
+check('problem: null record', problem({ Records: { 'task:1': null } }) !== null);
+check('problem: null field', problem({ Records: { 'task:1': { Title: null } } }) !== null);
+check('problem: field without a stamp', problem({ Records: { 'task:1': { Title: { v: 'x' } } } }) !== null);
+check('problem: newer format', problem({ Format: 3, Records: {} }) === 'unsupported format');
 
 console.log(`${pass} passed, ${fail} failed`);
 process.exit(fail);

@@ -20,11 +20,28 @@ function deviceName() {
   return 'Web';
 }
 
+/**
+ * The state kept on this device. If it cannot be read (damaged or half-written), it is set aside under another
+ * key rather than thrown away, and the page starts clean: it would otherwise stay blank on every launch.
+ */
+function loadSaved() {
+  let text = null;
+  try {
+    text = localStorage.getItem(KEY);
+    const saved = JSON.parse(text || 'null');
+    if (saved !== null && (typeof saved !== 'object' || Array.isArray(saved))) throw new Error('not an object');
+    return saved;
+  } catch {
+    try { localStorage.setItem(KEY + '.unreadable', text ?? ''); localStorage.removeItem(KEY); } catch { /* storage unavailable */ }
+    return null;
+  }
+}
+
 export class Store extends EventTarget {
   constructor({ demo = false } = {}) {
     super();
     this.demo = demo;
-    const saved = demo ? null : JSON.parse(localStorage.getItem(KEY) || 'null');
+    const saved = demo ? null : loadSaved();
     this.device = saved?.device ?? { id: newId().slice(0, 8), name: deviceName() };
     this.replica = saved?.replica ?? E.newReplica(this.device.id, this.device.name);
     this.data = { ...emptyData(), ...(saved?.data ?? {}) };
@@ -40,13 +57,19 @@ export class Store extends EventTarget {
     this.running = false;
     this.again = false;
     this.timer = null;
+    this.skipped = {};                      // device folder or file -> why its newest file was not merged
   }
 
   get base() { return `${this.device.name.replace(/[^A-Za-z0-9_-]/g, '_')}-${this.device.id}`; }
 
   persist() {
     if (this.demo) return;
-    localStorage.setItem(KEY, JSON.stringify({ device: this.device, replica: this.replica, data: this.data, others: this.others, pending: this.pending }));
+    try {
+      localStorage.setItem(KEY, JSON.stringify({ device: this.device, replica: this.replica, data: this.data, others: this.others, pending: this.pending }));
+    } catch (e) {
+      // Storage full or blocked (private browsing). The edit is still in memory and syncs; only the offline copy is behind.
+      this.setStatus('problem', `Could not keep a copy on this device: ${e.name}`);
+    }
   }
 
   emit(kind) { this.dispatchEvent(new Event(kind)); }
@@ -79,8 +102,8 @@ export class Store extends EventTarget {
       this.persist();                                                   // ...to here
       if (incoming) this.emit('data');
       if (this.pending) await this.publish();                          // 3. upload own edits
-      const n = Object.keys(this.others).length;
-      this.setStatus('synced', `Synced ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · ${n} other device${n === 1 ? '' : 's'}`);
+      const n = Object.keys(this.others).length, bad = Object.keys(this.skipped).length;
+      this.setStatus('synced', `Synced ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · ${n} other device${n === 1 ? '' : 's'}${bad ? ` (${bad} unreadable file${bad === 1 ? '' : 's'} skipped)` : ''}`);
     } catch (e) {
       if (e instanceof G.SignInNeeded) this.setStatus('signin', 'Sign in to sync');
       else this.setStatus(navigator.onLine ? 'problem' : 'offline', navigator.onLine ? `Sync problem: ${e.message}` : 'Offline - changes are kept and sync later');
@@ -102,8 +125,13 @@ export class Store extends EventTarget {
         key = item.name; file = item;
       }
       if (!file || this.others[key]?.etag === file.eTag) continue;
-      try { out[key] = { etag: file.eTag, replica: JSON.parse(await G.download(file.downloadUrl)) }; }
-      catch { /* half-arrived or just deleted: next pass picks up the next version */ }
+      try {
+        const replica = JSON.parse(await G.download(file.downloadUrl));
+        const why = E.problem(replica);
+        if (why) { this.skipped[key] = why; continue; }                 // a bad file is skipped and reported, never merged
+        delete this.skipped[key];
+        out[key] = { etag: file.eTag, replica };
+      } catch { /* half-arrived or just deleted: next pass picks up the next version */ }
     }
     return out;
   }

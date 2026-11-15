@@ -24,6 +24,9 @@ here: they live in your own OneDrive, behind your Microsoft sign-in.
 - **Record kinds:** each sync file says which kinds of record its writer knows (`Format` 2 = lists, tasks, habits,
   check-ins, focus records). Records of a kind a file's writer did not know are ignored when it is merged, so an older
   device cannot delete them; same rule as the PC.
+- **Bad files:** a device file that is not a sound replica (missing records or fields, or from a newer format) is skipped and
+  counted in the status line, never merged, so one damaged file cannot stop sync. A damaged saved state on the device is
+  set aside (`pim.state.unreadable`) and the page starts clean instead of staying blank.
 - **24-hour sign-in:** Microsoft limits browser apps to 24 hours per sign-in. After that the page goes to Microsoft
   and straight back without asking, as long as Microsoft remembers you on this device.
 
@@ -39,5 +42,5 @@ tags, and the PC's plain-English quick add (the phone has Today / Tomorrow / No 
 Static files, no build step. `python -m http.server 8765 --bind 127.0.0.1`, then open
 `http://127.0.0.1:8765/?demo=1` for demo data (never syncs) or without `?demo` to sign in (that address is registered
 for sign-in too). Tests: `node tests/engine.test.mjs <a replica written by PIM>`, `node tests/habits.test.mjs <a replica with habits>`,
-`node tests/compat_habits.mjs <replica> <test sync folder>` (then start PIM on that folder) and
+`node tests/store.test.mjs` (damaged or full device storage), `node tests/compat_habits.mjs <replica> <test sync folder>` (then start PIM on that folder) and
 `python tests/ui_demo.py http://127.0.0.1:8765/ shots`.

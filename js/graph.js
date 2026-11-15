@@ -16,10 +16,17 @@ async function call(url, init = {}) {
 
 /** Items directly inside a folder of the app folder: {name, eTag, folder?, file?, downloadUrl}. Empty if missing. */
 export async function children(path) {
-  const res = await call(`${ROOT}:/${enc(path)}:/children?$top=200`);
-  if (res.status === 404) return [];
-  if (!res.ok) throw new Error(`OneDrive list failed (${res.status})`);
-  return (await res.json()).value.map(i => ({ name: i.name, eTag: i.eTag, folder: !!i.folder, file: !!i.file, downloadUrl: i['@microsoft.graph.downloadUrl'] }));
+  const out = [];
+  let url = `${ROOT}:/${enc(path)}:/children?$top=200`;
+  while (url) {
+    const res = await call(url);
+    if (res.status === 404) return out;
+    if (!res.ok) throw new Error(`OneDrive list failed (${res.status})`);
+    const page = await res.json();
+    for (const i of page.value) out.push({ name: i.name, eTag: i.eTag, folder: !!i.folder, file: !!i.file, downloadUrl: i['@microsoft.graph.downloadUrl'] });
+    url = page['@odata.nextLink'] || null;   // a folder with more than 200 entries comes back in pages
+  }
+  return out;
 }
 
 /** Downloads a file through its pre-authorised link (no token needed for that request). */
